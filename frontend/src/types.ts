@@ -7,6 +7,12 @@ export interface Conversation {
 	document_count?: number;
 }
 
+export interface Citation {
+	quote: string | null;
+	document: string;
+	page: number | null;
+}
+
 export interface Message {
 	id: string;
 	conversation_id: string;
@@ -14,6 +20,7 @@ export interface Message {
 	content: string;
 	sources_cited: number;
 	sources?: string[];
+	citation?: Citation | null;
 	created_at: string;
 }
 

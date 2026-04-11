@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { ChatSidebar } from "./components/ChatSidebar";
 import { ChatWindow } from "./components/ChatWindow";
 import { DocumentViewer } from "./components/DocumentViewer";
@@ -40,6 +40,16 @@ export default function App() {
 	} = useDocument(selectedId);
 
 	const hasDocument = documents.length > 0;
+
+	const [currentPage, setCurrentPage] = useState(1);
+
+	const handleJumpToPage = useCallback(
+		(documentId: string, page: number) => {
+			setActiveDocumentId(documentId);
+			setCurrentPage(page);
+		},
+		[setActiveDocumentId],
+	);
 
 	const handleSend = useCallback(
 		async (content: string) => {
@@ -84,14 +94,18 @@ export default function App() {
 					streamingContent={streamingContent}
 					hasDocument={hasDocument}
 					conversationId={selectedId}
+					documents={documents}
 					onSend={handleSend}
 					onUpload={(files: File[]) => handleUpload(files)}
+					onJumpToPage={handleJumpToPage}
 				/>
 
 				<DocumentViewer
 					documents={documents}
 					activeDocumentId={activeDocumentId}
+					currentPage={currentPage}
 					onSelectDocument={setActiveDocumentId}
+					onPageChange={setCurrentPage}
 					onUpload={(files: File[]) => handleUpload(files)}
 					onRemoveDocument={removeDocument}
 					uploading={uploading}

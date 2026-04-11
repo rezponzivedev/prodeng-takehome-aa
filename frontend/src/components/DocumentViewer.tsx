@@ -21,7 +21,9 @@ const DEFAULT_WIDTH = 400;
 interface DocumentViewerProps {
 	documents: Document[];
 	activeDocumentId: string | null;
+	currentPage: number;
 	onSelectDocument: (id: string) => void;
+	onPageChange: (page: number) => void;
 	onUpload: (files: File[]) => void;
 	onRemoveDocument: (id: string) => void;
 	uploading?: boolean;
@@ -30,13 +32,14 @@ interface DocumentViewerProps {
 export function DocumentViewer({
 	documents,
 	activeDocumentId,
+	currentPage,
 	onSelectDocument,
+	onPageChange,
 	onUpload,
 	onRemoveDocument,
 	uploading = false,
 }: DocumentViewerProps) {
 	const [numPages, setNumPages] = useState<number>(0);
-	const [currentPage, setCurrentPage] = useState(1);
 	const [pdfLoading, setPdfLoading] = useState(true);
 	const [pdfError, setPdfError] = useState<string | null>(null);
 	const [width, setWidth] = useState(DEFAULT_WIDTH);
@@ -51,10 +54,10 @@ export function DocumentViewer({
 
 	// Reset page when switching documents
 	useEffect(() => {
-		setCurrentPage(1);
+		onPageChange(1);
 		setPdfLoading(true);
 		setPdfError(null);
-	}, [activeDocument?.id]);
+	}, [activeDocument?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const handleMouseDown = useCallback(
 		(e: React.MouseEvent) => {
@@ -240,7 +243,7 @@ export function DocumentViewer({
 						size="icon"
 						className="h-7 w-7"
 						disabled={currentPage <= 1}
-						onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+						onClick={() => onPageChange(Math.max(1, currentPage - 1))}
 					>
 						<ChevronLeft className="h-4 w-4" />
 					</Button>
@@ -252,7 +255,7 @@ export function DocumentViewer({
 						size="icon"
 						className="h-7 w-7"
 						disabled={currentPage >= numPages}
-						onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+						onClick={() => onPageChange(Math.min(numPages, currentPage + 1))}
 					>
 						<ChevronRight className="h-4 w-4" />
 					</Button>

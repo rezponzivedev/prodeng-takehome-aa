@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { Message } from "../types";
+import type { Document, Message } from "../types";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
 import { MessageBubble, StreamingBubble } from "./MessageBubble";
@@ -13,8 +13,10 @@ interface ChatWindowProps {
 	streamingContent: string;
 	hasDocument: boolean;
 	conversationId: string | null;
+	documents?: Document[];
 	onSend: (content: string) => void;
 	onUpload: (files: File[]) => void;
+	onJumpToPage?: (documentId: string, page: number) => void;
 }
 
 export function ChatWindow({
@@ -25,8 +27,10 @@ export function ChatWindow({
 	streamingContent,
 	hasDocument,
 	conversationId,
+	documents,
 	onSend,
 	onUpload,
+	onJumpToPage,
 }: ChatWindowProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -97,7 +101,12 @@ export function ChatWindow({
 			<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
 				<div className="mx-auto max-w-2xl space-y-1">
 					{messages.map((message) => (
-						<MessageBubble key={message.id} message={message} />
+						<MessageBubble
+							key={message.id}
+							message={message}
+							documents={documents}
+							onJumpToPage={onJumpToPage}
+						/>
 					))}
 					{streaming && <StreamingBubble content={streamingContent} />}
 				</div>

@@ -28,6 +28,12 @@ router = APIRouter(tags=["messages"])
 # --------------------------------------------------------------------------- #
 
 
+class CitationOut(BaseModel):
+    quote: str | None
+    document: str
+    page: int | None
+
+
 class MessageOut(BaseModel):
     id: str
     conversation_id: str
@@ -35,6 +41,7 @@ class MessageOut(BaseModel):
     content: str
     sources_cited: int
     sources: list[str] = []
+    citation: CitationOut | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -50,6 +57,21 @@ class MessageOut(BaseModel):
         if isinstance(v, list):
             return v
         return []
+
+    @validator("citation", pre=True, always=True)
+    @classmethod
+    def parse_citation(cls, v: object) -> CitationOut | None:
+        if isinstance(v, str):
+            try:
+                data = json.loads(v)
+                return CitationOut(
+                    quote=data.get("quote"),
+                    document=data.get("document", ""),
+                    page=data.get("page"),
+                )
+            except Exception:
+                return None
+        return v
 
 
 class MessageCreate(BaseModel):
@@ -91,6 +113,7 @@ async def list_messages(
             content=m.content,
             sources_cited=m.sources_cited,
             sources=m.sources,
+            citation=m.citation,
             created_at=m.created_at,
         )
         for m in messages
@@ -181,6 +204,18 @@ async def send_message(
                 sources = []
             full_response = full_response[: sources_match.start()].rstrip()
 
+        # Parse and strip the [CITATION: {...}] block from the response
+        citation_json: str | None = None
+        citation_match = re.search(r"\[CITATION:\s*(\{.*?\})\]", full_response, re.DOTALL)
+        if citation_match:
+            try:
+                citation_data = json.loads(citation_match.group(1))
+                if citation_data.get("quote") is not None:
+                    citation_json = json.dumps(citation_data)
+            except (json.JSONDecodeError, AttributeError):
+                pass
+            full_response = full_response[: citation_match.start()].rstrip()
+
         # Count sources cited in the full response
         sources_count = count_sources_cited(full_response)
 
@@ -194,6 +229,7 @@ async def send_message(
                 content=full_response,
                 sources_cited=sources_count,
                 sources=json.dumps(sources) if sources else None,
+                citation=citation_json,
             )
             save_session.add(assistant_message)
             await save_session.commit()
@@ -215,6 +251,14 @@ async def send_message(
                         conversation_id=conversation_id,
                     )
 
+            # Build citation dict for the SSE event
+            citation_dict = None
+            if citation_json:
+                try:
+                    citation_dict = json.loads(citation_json)
+                except Exception:
+                    pass
+
             # Send the final message event with the complete assistant message
             message_data = json.dumps(
                 {
@@ -226,6 +270,7 @@ async def send_message(
                         "content": assistant_message.content,
                         "sources_cited": assistant_message.sources_cited,
                         "sources": sources,
+                        "citation": citation_dict,
                         "created_at": assistant_message.created_at.isoformat(),
                     },
                 }

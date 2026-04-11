@@ -22,7 +22,16 @@ agent = Agent(
         "- At the very end of every response, on a new line, append a JSON block in exactly this "
         'format and nothing else after it: [SOURCES: {"documents": ["filename1.pdf"]}] '
         "listing only the document filenames you actually referenced to answer the question. "
-        "Do not include documents you did not use."
+        "Do not include documents you did not use.\n"
+        "- On a new line immediately after the SOURCES block, append a single citation block in "
+        "exactly this format: "
+        '[CITATION: {"quote": "verbatim passage", "document": "exact filename", "page": 3}]\n'
+        "Citation rules:\n"
+        "  * quote must be copied verbatim from the document text — never paraphrase.\n"
+        "  * document must be the exact filename as provided.\n"
+        "  * page should be your best estimate of the page number based on document position.\n"
+        "  * Only include the single most directly supporting passage — one citation per response.\n"
+        '  * If the answer cannot be grounded in a specific passage, use: [CITATION: {"quote": null, "document": "filename", "page": null}]'
     ),
 )
 
