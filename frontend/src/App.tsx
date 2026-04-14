@@ -6,6 +6,7 @@ import { TooltipProvider } from "./components/ui/tooltip";
 import { useConversations } from "./hooks/use-conversations";
 import { useDocument } from "./hooks/use-document";
 import { useMessages } from "./hooks/use-messages";
+import { usePriorDocuments } from "./hooks/use-prior-documents";
 import type { Document } from "./types";
 
 export default function App() {
@@ -41,7 +42,33 @@ export default function App() {
 
 	const hasDocument = documents.length > 0;
 
+	const {
+		previousDocuments,
+		attach,
+		attaching,
+		refresh: refreshPriorDocuments,
+	} = usePriorDocuments(selectedId, documents);
+
 	const [currentPage, setCurrentPage] = useState(1);
+
+	const handleAttach = useCallback(
+		async (documentId: string) => {
+			const doc = await attach(documentId);
+			if (doc) {
+				refreshDocument();
+				refreshPriorDocuments();
+			}
+		},
+		[attach, refreshDocument, refreshPriorDocuments],
+	);
+
+	const handleSelectDocument = useCallback(
+		(documentId: string) => {
+			setActiveDocumentId(documentId);
+			setCurrentPage(1);
+		},
+		[setActiveDocumentId],
+	);
 
 	const handleJumpToPage = useCallback(
 		(documentId: string, page: number) => {
@@ -65,9 +92,10 @@ export default function App() {
 			if (doc) {
 				refreshDocument();
 				refreshConversations();
+				refreshPriorDocuments();
 			}
 		},
-		[upload, refreshDocument, refreshConversations],
+		[upload, refreshDocument, refreshConversations, refreshPriorDocuments],
 	);
 
 	const handleCreate = useCallback(async () => {
@@ -95,20 +123,26 @@ export default function App() {
 					hasDocument={hasDocument}
 					conversationId={selectedId}
 					documents={documents}
+					previousDocuments={previousDocuments}
 					onSend={handleSend}
 					onUpload={(files: File[]) => handleUpload(files)}
 					onJumpToPage={handleJumpToPage}
+					onAttach={handleAttach}
+					attaching={attaching}
 				/>
 
 				<DocumentViewer
 					documents={documents}
 					activeDocumentId={activeDocumentId}
 					currentPage={currentPage}
-					onSelectDocument={setActiveDocumentId}
+					onSelectDocument={handleSelectDocument}
 					onPageChange={setCurrentPage}
 					onUpload={(files: File[]) => handleUpload(files)}
 					onRemoveDocument={removeDocument}
 					uploading={uploading}
+					previousDocuments={previousDocuments}
+					onAttach={handleAttach}
+					attaching={attaching}
 				/>
 			</div>
 		</TooltipProvider>

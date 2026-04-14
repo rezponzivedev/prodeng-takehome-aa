@@ -122,11 +122,18 @@ export function MessageBubble({ message, documents, onJumpToPage }: MessageBubbl
 						onJumpToPage={onJumpToPage}
 					/>
 				)}
-				{message.sources && message.sources.length > 0 && (
-					<p className="mt-1.5 text-[11px] text-neutral-400">
-						Sources: {message.sources.join(", ")}
-					</p>
-				)}
+				{message.sources && message.sources.length > 0 && (() => {
+					// Suppress the Sources line when the citation block already names
+					// every source — it would just repeat the same filename(s).
+					const citedDoc = message.citation?.quote != null ? message.citation.document : null;
+					const uncited = message.sources.filter((s) => s !== citedDoc);
+					if (uncited.length === 0) return null;
+					return (
+						<p className="mt-1.5 text-[11px] text-neutral-400">
+							Sources: {uncited.join(", ")}
+						</p>
+					);
+				})()}
 			</div>
 		</motion.div>
 	);

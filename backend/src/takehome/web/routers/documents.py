@@ -11,7 +11,13 @@ from starlette.responses import FileResponse
 
 from takehome.db.session import get_session
 from takehome.services.conversation import get_conversation
-from takehome.services.document import delete_document, get_document, upload_document
+from takehome.services.document import (
+    attach_document,
+    delete_document,
+    get_all_documents,
+    get_document,
+    upload_document,
+)
 
 logger = structlog.get_logger()
 
@@ -65,6 +71,63 @@ async def upload_document_endpoint(
 
     logger.info(
         "Document uploaded",
+        conversation_id=conversation_id,
+        document_id=document.id,
+        filename=document.filename,
+    )
+
+    return DocumentOut(
+        id=document.id,
+        conversation_id=document.conversation_id,
+        filename=document.filename,
+        page_count=document.page_count,
+        uploaded_at=document.uploaded_at,
+    )
+
+
+@router.get("/api/documents", response_model=list[DocumentOut])
+async def list_all_documents(
+    session: AsyncSession = Depends(get_session),
+) -> list[DocumentOut]:
+    """List all documents across all conversations, ordered by most recent first."""
+    docs = await get_all_documents(session)
+    return [
+        DocumentOut(
+            id=d.id,
+            conversation_id=d.conversation_id,
+            filename=d.filename,
+            page_count=d.page_count,
+            uploaded_at=d.uploaded_at,
+        )
+        for d in docs
+    ]
+
+
+class AttachDocumentBody(BaseModel):
+    document_id: str
+
+
+@router.post(
+    "/api/conversations/{conversation_id}/documents/attach",
+    response_model=DocumentOut,
+    status_code=201,
+)
+async def attach_document_endpoint(
+    conversation_id: str,
+    body: AttachDocumentBody,
+    session: AsyncSession = Depends(get_session),
+) -> DocumentOut:
+    """Attach an existing document to a conversation without re-uploading the file."""
+    conversation = await get_conversation(session, conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    document = await attach_document(session, conversation_id, body.document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Source document not found")
+
+    logger.info(
+        "Document attached",
         conversation_id=conversation_id,
         document_id=document.id,
         filename=document.filename,

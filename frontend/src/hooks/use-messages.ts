@@ -2,6 +2,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../lib/api";
 import type { Message } from "../types";
 
+/**
+ * Strips [SOURCES: {...}] and [CITATION: {...}] blocks from streamed text so
+ * they never appear as raw JSON in the chat bubble during streaming.
+ * Uses a partial-match trim so an in-progress block that hasn't closed yet
+ * is also hidden (everything from the opening bracket onward is dropped).
+ */
+function stripAnnotationBlocks(text: string): string {
+	// Remove complete blocks first
+	let result = text
+		.replace(/\[SOURCES:\s*\{.*?\}\]/gs, "")
+		.replace(/\[CITATION:\s*\{.*?\}\]/gs, "");
+	// If an incomplete block has started (opening bracket present, no closing ]
+	// yet), trim from that point so partial JSON never shows.
+	const partialMatch = result.search(/\[(SOURCES|CITATION):/);
+	if (partialMatch !== -1) {
+		result = result.slice(0, partialMatch);
+	}
+	return result.trimEnd();
+}
+
 export function useMessages(conversationId: string | null) {
 	const [messages, setMessages] = useState<Message[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -92,10 +112,10 @@ export function useMessages(conversationId: string | null) {
 
 							if (parsed.type === "delta" && parsed.delta) {
 								accumulated += parsed.delta;
-								setStreamingContent(accumulated);
+								setStreamingContent(stripAnnotationBlocks(accumulated));
 							} else if (parsed.type === "content" && parsed.content) {
 								accumulated += parsed.content;
-								setStreamingContent(accumulated);
+								setStreamingContent(stripAnnotationBlocks(accumulated));
 							} else if (parsed.type === "message" && parsed.message) {
 								// Final message from server
 								setMessages((prev) => [...prev, parsed.message as Message]);
@@ -103,7 +123,7 @@ export function useMessages(conversationId: string | null) {
 							} else if (parsed.content && !parsed.type) {
 								// Fallback: plain content field
 								accumulated += parsed.content;
-								setStreamingContent(accumulated);
+								setStreamingContent(stripAnnotationBlocks(accumulated));
 							}
 						} catch {
 							// Skip invalid JSON lines

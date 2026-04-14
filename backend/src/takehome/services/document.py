@@ -101,22 +101,34 @@ async def get_document(session: AsyncSession, document_id: str) -> Document | No
 
 
 async def delete_document(session: AsyncSession, document_id: str) -> bool:
-    """Delete a document record and its file from disk. Returns True if deleted."""
-    from sqlalchemy import delete as sql_delete
+    """Delete a document record and its file from disk. Returns True if deleted.
+
+    The physical file is only removed when no other Document records share the
+    same file_path (i.e. documents attached via attach_document).
+    """
+    from sqlalchemy import delete as sql_delete, func
 
     doc = await get_document(session, document_id)
     if doc is None:
         return False
 
-    # Remove file from disk
-    if doc.file_path and os.path.exists(doc.file_path):
-        try:
-            os.remove(doc.file_path)
-        except OSError:
-            logger.warning("Could not delete file from disk", path=doc.file_path)
+    # Count how many documents share this file path
+    file_path = doc.file_path
+    count_result = await session.execute(
+        select(func.count()).where(Document.file_path == file_path)
+    )
+    shared_count = count_result.scalar_one()
 
     await session.execute(sql_delete(Document).where(Document.id == document_id))
     await session.commit()
+
+    # Only remove file from disk if this was the last reference
+    if shared_count <= 1 and file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            logger.warning("Could not delete file from disk", path=file_path)
+
     return True
 
 
@@ -140,3 +152,35 @@ async def get_documents_for_conversation(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_all_documents(session: AsyncSession) -> list[Document]:
+    """Get all documents across all conversations, ordered by upload time descending."""
+    stmt = select(Document).order_by(Document.uploaded_at.desc())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def attach_document(
+    session: AsyncSession, conversation_id: str, source_document_id: str
+) -> Document | None:
+    """Attach an existing document to a conversation without re-uploading.
+
+    Creates a new Document record pointing to the same file and extracted text
+    as the source document. Returns None if the source document doesn't exist.
+    """
+    source = await get_document(session, source_document_id)
+    if source is None:
+        return None
+
+    document = Document(
+        conversation_id=conversation_id,
+        filename=source.filename,
+        file_path=source.file_path,
+        extracted_text=source.extracted_text,
+        page_count=source.page_count,
+    )
+    session.add(document)
+    await session.commit()
+    await session.refresh(document)
+    return document

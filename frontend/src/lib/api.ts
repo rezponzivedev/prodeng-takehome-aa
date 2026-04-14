@@ -82,6 +82,26 @@ export async function uploadDocument(
 	return handleResponse<Document>(res);
 }
 
+export async function fetchAllDocuments(): Promise<Document[]> {
+	const res = await fetch(`${BASE}/documents`);
+	return handleResponse<Document[]>(res);
+}
+
+export async function attachDocument(
+	conversationId: string,
+	documentId: string,
+): Promise<Document> {
+	const res = await fetch(
+		`${BASE}/conversations/${conversationId}/documents/attach`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ document_id: documentId }),
+		},
+	);
+	return handleResponse<Document>(res);
+}
+
 export async function deleteDocument(documentId: string): Promise<void> {
 	const res = await fetch(`${BASE}/documents/${documentId}`, {
 		method: "DELETE",

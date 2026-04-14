@@ -194,27 +194,47 @@ async def send_message(
             event_data = json.dumps({"type": "content", "content": error_msg})
             yield f"data: {event_data}\n\n"
 
-        # Parse and strip the [SOURCES: {...}] block from the response
+        # Parse both annotation blocks from the full response before stripping
+        # either — SOURCES is stripped first which would otherwise remove the
+        # CITATION block that follows it.
         sources: list[str] = []
+        citation_json: str | None = None
+
         sources_match = re.search(r"\[SOURCES:\s*(\{.*?\})\]", full_response, re.DOTALL)
+        citation_match = re.search(r"\[CITATION:\s*(\{.*?\})\]", full_response, re.DOTALL)
+
         if sources_match:
             try:
                 sources = json.loads(sources_match.group(1)).get("documents", [])
             except (json.JSONDecodeError, AttributeError):
                 sources = []
-            full_response = full_response[: sources_match.start()].rstrip()
 
-        # Parse and strip the [CITATION: {...}] block from the response
-        citation_json: str | None = None
-        citation_match = re.search(r"\[CITATION:\s*(\{.*?\})\]", full_response, re.DOTALL)
         if citation_match:
             try:
                 citation_data = json.loads(citation_match.group(1))
-                if citation_data.get("quote") is not None:
-                    citation_json = json.dumps(citation_data)
+                # Store the full citation object regardless of whether quote is null —
+                # quote: null is an intentional "can't ground" signal the frontend needs.
+                citation_json = json.dumps(citation_data)
+                if citation_data.get("quote") is None:
+                    logger.info(
+                        "Citation quote is null — model could not ground answer in document",
+                        conversation_id=conversation_id,
+                    )
             except (json.JSONDecodeError, AttributeError):
-                pass
-            full_response = full_response[: citation_match.start()].rstrip()
+                logger.warning(
+                    "Failed to parse CITATION block — malformed JSON from model",
+                    conversation_id=conversation_id,
+                    raw=citation_match.group(1)[:200],
+                )
+
+        # Strip annotation blocks from the displayed content. Trim from whichever
+        # block starts earlier so neither leaks into the stored message text.
+        strip_from = len(full_response)
+        if sources_match:
+            strip_from = min(strip_from, sources_match.start())
+        if citation_match:
+            strip_from = min(strip_from, citation_match.start())
+        full_response = full_response[:strip_from].rstrip()
 
         # Count sources cited in the full response
         sources_count = count_sources_cited(full_response)

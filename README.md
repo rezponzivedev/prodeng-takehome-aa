@@ -1,5 +1,16 @@
 # Orbital — Product Engineering Take-Home
 
+## Submission
+
+Loom walkthrough: https://www.loom.com/share/783fbaf0bb93460f99e452d9dc39eeef
+
+**What I built:**
+
+- **Part 1:** Extended the app to support multiple documents per conversation — tab strip navigation, persistent document library, cross-document AI responses with source attribution
+- **Part 2:** Verifiable inline citation — every AI response includes the verbatim passage it drew from, with a one-click jump to that page in the document viewer. See DECISIONS.md for the full reasoning.
+
+---
+
 Welcome! This is a take-home assessment for a Product Engineering role at Orbital.
 
 You've been given a working baseline application: a document Q&A tool for commercial real estate lawyers. Users upload legal documents (leases, title reports, environmental assessments) and ask questions about them. The AI assistant answers questions grounded in the document content.

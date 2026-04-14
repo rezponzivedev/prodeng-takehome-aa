@@ -1,5 +1,5 @@
-import { Loader2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { ChevronDown, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { Document, Message } from "../types";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
@@ -14,9 +14,12 @@ interface ChatWindowProps {
 	hasDocument: boolean;
 	conversationId: string | null;
 	documents?: Document[];
+	previousDocuments?: Document[];
 	onSend: (content: string) => void;
 	onUpload: (files: File[]) => void;
 	onJumpToPage?: (documentId: string, page: number) => void;
+	onAttach?: (documentId: string) => void;
+	attaching?: boolean;
 }
 
 export function ChatWindow({
@@ -28,20 +31,60 @@ export function ChatWindow({
 	hasDocument,
 	conversationId,
 	documents,
+	previousDocuments,
 	onSend,
 	onUpload,
 	onJumpToPage,
+	onAttach,
+	attaching,
 }: ChatWindowProps) {
 	const scrollRef = useRef<HTMLDivElement>(null);
-
-	// Auto-scroll to bottom when new messages arrive or during streaming
+	const [showScrollButton, setShowScrollButton] = useState(false);
+	const isAtBottomRef = useRef(true);
 	const messagesLength = messages.length;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: messages and streamingContent are intentional triggers for auto-scroll
-	useEffect(() => {
+
+	const scrollToBottom = () => {
 		if (scrollRef.current) {
 			scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
 		}
-	}, [messagesLength, streamingContent]);
+	};
+
+	// Track whether the user is near the bottom so streaming auto-scroll
+	// doesn't hijack them if they've scrolled up to read history.
+	// Re-run when conversationId or messagesLength changes so the listener is
+	// attached after the scrollable div mounts (early-return branches don't
+	// render it, so scrollRef.current is null until we reach the main layout).
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const onScroll = () => {
+			const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+			isAtBottomRef.current = distanceFromBottom < 80;
+			setShowScrollButton(distanceFromBottom > 150);
+		};
+		el.addEventListener("scroll", onScroll, { passive: true });
+		return () => el.removeEventListener("scroll", onScroll);
+	}, [conversationId, messagesLength]);
+
+	// New message added — always scroll. Deferred one frame so the DOM has
+	// painted the new bubble before we read scrollHeight.
+	useEffect(() => {
+		const frame = requestAnimationFrame(() => {
+			if (scrollRef.current) {
+				scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+			}
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [messagesLength]);
+
+	// Streaming chunks — only scroll if already at the bottom, so reading
+	// history isn't interrupted while a response is being generated.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: streamingContent is the intentional trigger
+	useEffect(() => {
+		if (isAtBottomRef.current) {
+			scrollToBottom();
+		}
+	}, [streamingContent]);
 
 	// No conversation selected
 	if (!conversationId) {
@@ -69,16 +112,14 @@ export function ChatWindow({
 	if (messages.length === 0 && !streaming) {
 		return (
 			<div className="flex flex-1 flex-col bg-white">
-				<div className="flex flex-1 items-center justify-center">
-					{hasDocument ? (
-						<div className="text-center">
-							<p className="text-sm text-neutral-500">
-								Document uploaded. Ask a question to get started.
-							</p>
-						</div>
-					) : (
-						<EmptyState onUpload={onUpload} />
-					)}
+				<div className="flex flex-1 items-center justify-center overflow-y-auto py-8">
+					<EmptyState
+						onUpload={onUpload}
+						hasDocument={hasDocument}
+						previousDocuments={previousDocuments}
+						onAttach={onAttach}
+						attaching={attaching}
+					/>
 				</div>
 				<ChatInput
 					onSend={onSend}
@@ -98,18 +139,30 @@ export function ChatWindow({
 				</div>
 			)}
 
-			<div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
-				<div className="mx-auto max-w-2xl space-y-1">
-					{messages.map((message) => (
-						<MessageBubble
-							key={message.id}
-							message={message}
-							documents={documents}
-							onJumpToPage={onJumpToPage}
-						/>
-					))}
-					{streaming && <StreamingBubble content={streamingContent} />}
+			<div className="relative flex-1 overflow-hidden">
+				<div ref={scrollRef} className="h-full overflow-y-auto px-6 py-4">
+					<div className="mx-auto max-w-2xl space-y-1">
+						{messages.map((message) => (
+							<MessageBubble
+								key={message.id}
+								message={message}
+								documents={documents}
+								onJumpToPage={onJumpToPage}
+							/>
+						))}
+						{streaming && <StreamingBubble content={streamingContent} />}
+					</div>
 				</div>
+				{showScrollButton && (
+					<button
+						type="button"
+						onClick={scrollToBottom}
+						className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-3 py-1.5 text-xs font-medium text-neutral-600 shadow-sm hover:bg-neutral-50 hover:text-neutral-900 transition-colors"
+					>
+						<ChevronDown className="h-3.5 w-3.5" />
+						Scroll to bottom
+					</button>
+				)}
 			</div>
 
 			<ChatInput

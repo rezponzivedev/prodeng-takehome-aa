@@ -7,6 +7,8 @@ from pydantic_ai import Agent
 
 from takehome.config import settings  # noqa: F401 — triggers ANTHROPIC_API_KEY export
 
+title_agent = Agent("anthropic:claude-haiku-4-5-20251001")
+
 agent = Agent(
     "anthropic:claude-haiku-4-5-20251001",
     system_prompt=(
@@ -38,7 +40,7 @@ agent = Agent(
 
 async def generate_title(user_message: str) -> str:
     """Generate a 3-5 word conversation title from the first user message."""
-    result = await agent.run(
+    result = await title_agent.run(
         f"Generate a concise 3-5 word title for a conversation that starts with: '{user_message}'. "
         "Return only the title, nothing else."
     )

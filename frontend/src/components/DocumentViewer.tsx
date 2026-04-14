@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, FileText, Loader2, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Loader2, Plus, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Document as PDFDocument, Page, pdfjs } from "react-pdf";
 import "react-pdf/dist/Page/AnnotationLayer.css";
@@ -8,6 +8,7 @@ import type { Document } from "../types";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { PreviousDocuments } from "./PreviousDocuments";
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 	"pdfjs-dist/build/pdf.worker.min.mjs",
@@ -27,6 +28,9 @@ interface DocumentViewerProps {
 	onUpload: (files: File[]) => void;
 	onRemoveDocument: (id: string) => void;
 	uploading?: boolean;
+	previousDocuments?: Document[];
+	onAttach?: (documentId: string) => void;
+	attaching?: boolean;
 }
 
 export function DocumentViewer({
@@ -38,12 +42,17 @@ export function DocumentViewer({
 	onUpload,
 	onRemoveDocument,
 	uploading = false,
+	previousDocuments = [],
+	onAttach,
+	attaching = false,
 }: DocumentViewerProps) {
 	const [numPages, setNumPages] = useState<number>(0);
 	const [pdfLoading, setPdfLoading] = useState(true);
 	const [pdfError, setPdfError] = useState<string | null>(null);
 	const [width, setWidth] = useState(DEFAULT_WIDTH);
 	const [dragging, setDragging] = useState(false);
+	const [dropOver, setDropOver] = useState(false);
+	const [showAddPanel, setShowAddPanel] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,9 +61,12 @@ export function DocumentViewer({
 		documents[0] ??
 		null;
 
-	// Reset page when switching documents
+	// Reset PDF loading state when the active document changes.
+	// Page number is intentionally NOT reset here — callers own that:
+	// tab switches go through onSelectDocument (which resets to 1),
+	// citation jumps go through handleJumpToPage (which sets the target page).
+	// Resetting here would race with and overwrite a citation jump.
 	useEffect(() => {
-		onPageChange(1);
 		setPdfLoading(true);
 		setPdfError(null);
 	}, [activeDocument?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -100,6 +112,30 @@ export function DocumentViewer({
 		[onUpload],
 	);
 
+	const handleDragOver = useCallback((e: { preventDefault: () => void }) => {
+		e.preventDefault();
+		setDropOver(true);
+	}, []);
+
+	const handleDragLeave = useCallback((e: { preventDefault: () => void }) => {
+		e.preventDefault();
+		setDropOver(false);
+	}, []);
+
+	const handleDrop = useCallback(
+		(e: { preventDefault: () => void; dataTransfer: DataTransfer }) => {
+			e.preventDefault();
+			setDropOver(false);
+			const files = Array.from<File>(e.dataTransfer.files).filter(
+				(f) => f.type === "application/pdf",
+			);
+			if (files.length > 0) {
+				onUpload(files);
+			}
+		},
+		[onUpload],
+	);
+
 	const pdfPageWidth = width - 48;
 	const pdfUrl = activeDocument ? getDocumentUrl(activeDocument.id) : null;
 
@@ -107,10 +143,39 @@ export function DocumentViewer({
 		return (
 			<div
 				style={{ width }}
-				className="flex h-full flex-shrink-0 flex-col items-center justify-center border-l border-neutral-200 bg-neutral-50"
+				className={cn(
+					"flex h-full flex-shrink-0 flex-col items-center justify-center gap-3 border-l border-neutral-200 transition-colors",
+					dropOver ? "bg-neutral-100" : "bg-neutral-50",
+				)}
+				onDragOver={handleDragOver}
+				onDragLeave={handleDragLeave}
+				onDrop={handleDrop}
 			>
-				<FileText className="mb-3 h-10 w-10 text-neutral-300" />
-				<p className="text-sm text-neutral-400">No document uploaded</p>
+				<FileText className={cn("h-10 w-10 transition-colors", dropOver ? "text-neutral-400" : "text-neutral-300")} />
+				<p className="text-sm text-neutral-400">
+					{dropOver ? "Drop PDFs to upload" : "No documents uploaded"}
+				</p>
+				<button
+					type="button"
+					onClick={() => fileInputRef.current?.click()}
+					disabled={uploading}
+					className="flex items-center gap-1.5 rounded-lg border border-dashed border-neutral-300 px-4 py-2 text-sm text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-700 disabled:opacity-50"
+				>
+					{uploading ? (
+						<Loader2 className="h-3.5 w-3.5 animate-spin" />
+					) : (
+						<Plus className="h-3.5 w-3.5" />
+					)}
+					Upload document
+				</button>
+				<input
+					ref={fileInputRef}
+					type="file"
+					accept=".pdf"
+					multiple
+					className="hidden"
+					onChange={handleFileChange}
+				/>
 			</div>
 		);
 	}
@@ -170,11 +235,17 @@ export function DocumentViewer({
 					<TooltipTrigger asChild>
 						<button
 							type="button"
-							onClick={() => fileInputRef.current?.click()}
-							disabled={uploading}
+							onClick={() => {
+								if (previousDocuments.length > 0) {
+									setShowAddPanel((v) => !v);
+								} else {
+									fileInputRef.current?.click();
+								}
+							}}
+							disabled={uploading || attaching}
 							className="mb-0.5 ml-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600 disabled:opacity-50"
 						>
-							{uploading ? (
+							{uploading || attaching ? (
 								<Loader2 className="h-3.5 w-3.5 animate-spin" />
 							) : (
 								<Plus className="h-3.5 w-3.5" />
@@ -193,6 +264,31 @@ export function DocumentViewer({
 					onChange={handleFileChange}
 				/>
 			</div>
+
+			{/* Add document panel */}
+			{showAddPanel && (
+				<div className="border-b border-neutral-200 bg-neutral-50 p-4">
+					<PreviousDocuments
+						documents={previousDocuments}
+						onAttach={(id) => {
+							onAttach?.(id);
+							setShowAddPanel(false);
+						}}
+						attaching={attaching}
+					/>
+					<button
+						type="button"
+						onClick={() => {
+							fileInputRef.current?.click();
+							setShowAddPanel(false);
+						}}
+						className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-neutral-300 py-2 text-sm text-neutral-500 hover:border-neutral-400 hover:text-neutral-700"
+					>
+						<Upload className="h-3.5 w-3.5" />
+						Upload new file
+					</button>
+				</div>
+			)}
 
 			{/* PDF content */}
 			<div className="flex-1 overflow-y-auto p-4">
